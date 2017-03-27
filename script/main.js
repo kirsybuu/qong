@@ -1146,9 +1146,18 @@ ENGINE.Game = {
     },
     
     // pointers (mouse and touches)
-    //pointerdown: function(event) {
-    //    this.app.setState(ENGINE.Pause);
-    //},
+    pointerdown: function(event) {
+        //this.app.setState(ENGINE.Pause);
+        if (this.stop) {
+            if (   this.restartButton.x <= event.x
+                && event.x <= this.restartButton.x + this.restartButton.width
+                && this.restartButton.y <= event.y
+                && event.y <= this.restartButton.y + this.restartButton.height) {
+                // restart
+                this.newGameState();
+            }
+        }
+    },
     //pointerup: function(event) { },
     //pointermove: function(event) { },
     
@@ -1188,16 +1197,6 @@ ENGINE.Game = {
             rightDown ? "1" : "0",
             rightUp   ? "1" : "0"
         ];
-        /*
-        let yl = !this.leftAI && !(this.leftDownPressed && this.leftUpPressed);
-        let yr = !(this.rightDownPressed && this.rightUpPressed);
-        var newButtonBits = [
-            (this.leftDownPressed && yl) ? "1" : "0",
-            (this.leftUpPressed && yl) ? "1" : "0",
-            (this.rightDownPressed && yr) ? "1" : "0",
-            (this.rightUpPressed && yr) ? "1" : "0"
-        ];
-        */
         return newButtonBits;
     },
     
@@ -1264,31 +1263,32 @@ ENGINE.Game = {
     
     recalculateGrid: function() {
         this.textHeight = 16 * 5;
-        var appBottom = this.app.height - this.textHeight;
-        var appRight  = this.app.width;
-        let siNaive = Math.floor(appRight / gridWidth);
-        let sjNaive = Math.floor(appBottom / gridHeight);
+        let appLeft = 0;
+        let appTop = this.textHeight;
+        let appRight  = this.app.width - appLeft;
+        let appBottom = this.app.height - appTop;
+        let siNaive = Math.floor((appRight - appLeft) / gridWidth);
+        let sjNaive = Math.floor((appBottom - appTop) / gridHeight);
         this.gstep = Math.min(siNaive, sjNaive);
-        if (false) {
-            // align to top-left of screen
-            this.gridLeft = 0;
-            this.gridTop = 0;
-            this.gridRight  = this.gstep * gridWidth;
-            this.gridBottom = this.gstep * gridHeight;
-        }
-        else {
-            // align to center
-            let gridSizeX = this.gstep * gridWidth;
-            let gridSizeY = this.gstep * gridHeight;
-            
-            let gridPadX = (appRight - gridSizeX) / 2;
-            let gridPadY = (appBottom - gridSizeY) / 2;
-            
-            this.gridLeft = gridPadX;
-            this.gridTop = gridPadY;
-            this.gridRight  = gridPadX + gridSizeX;
-            this.gridBottom = gridPadY + gridSizeY;
-        }
+        
+        // align to center
+        let gridSizeX = this.gstep * gridWidth;
+        let gridSizeY = this.gstep * gridHeight;
+        
+        let gridPadX = (appRight - gridSizeX) / 2;
+        let gridPadY = (appBottom - gridSizeY) / 2;
+        
+        this.gridLeft = gridPadX;
+        this.gridTop = gridPadY;
+        this.gridRight  = gridPadX + gridSizeX;
+        this.gridBottom = gridPadY + gridSizeY;
+        
+        this.restartButton = {
+            x: this.app.width / 4 + 8,
+            y: 8,
+            width: this.app.width/2 - 16,
+            height: this.gridTop - 16
+        };
     },
     
     render: function(dt) {
@@ -1320,13 +1320,10 @@ ENGINE.Game = {
         
         // render ball
         if (true) {
-            //let xyDist = this.state.distOf(itoa(this.ranges.x).concat(itoa(this.ranges.y)));
-            
             let xRange = this.ranges.x;
             let yRange = this.ranges.y;
             let dBit = this.ranges.d.start;
             let rBit = this.ranges.r.start;
-            //let yBits = this.structure[this.ranges.y.index].len;
             
             layer.strokeStyle("#000")
                  .fillStyle("#000");
@@ -1438,13 +1435,6 @@ ENGINE.Game = {
             for (var desc of this.obsCoords) {
                 let color = (desc.dir == "v") ? "#00ff00" : "#0000ff";
                 
-                /*
-                layer.fillStyle(color)
-                     .a(alpha)
-                     .fillRect(gstep * desc.x, gstep * desc.y,
-                               gstep, gstep);
-                */
-                
                 layer.strokeStyle("#000")
                      .strokeRect(gridLeft + gstep * desc.x, gridTop + gstep * desc.y,
                                  gstep, gstep);
@@ -1465,7 +1455,6 @@ ENGINE.Game = {
                 
                 layer.restore();
             }
-            //layer.a(1.0);
         }
         
         // render prob lose text
@@ -1488,6 +1477,23 @@ ENGINE.Game = {
                            this.app.width / 4, gridBottom + 16 * 5)
                 ;
         }
+        
+        // render try again button
+        if (this.stop) {
+            layer.save()
+                 .strokeStyle("#000")
+                 .lineWidth(3)
+                 .strokeRect(this.restartButton.x, this.restartButton.y, this.restartButton.width, this.restartButton.height)
+                 .fillStyle("#ddd")
+                 .fillRect(this.restartButton.x, this.restartButton.y, this.restartButton.width, this.restartButton.height)
+                 .restore();
+            
+            layer.fillStyle("#000")
+                 .font("1em Verdana")
+                 .textAlign("left")
+                 .fillText("Touch here or press I to reinitialize!",
+                           this.restartButton.x + 16, this.restartButton.y + this.restartButton.height/2)
+        }
     }
 };
 
@@ -1498,8 +1504,6 @@ ENGINE.Game = {
 
 // entrance point
 var app = playground({
-    //width: gridWidth * 16,       // force width
-    //height: gridHeight * 16 * 2,      // force height
     smoothing: false, // no interpolation
     scale: 1,         // force scaling
     

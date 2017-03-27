@@ -938,11 +938,14 @@ ENGINE.Game = {
     
     // on first time state enter
     create: function() {
+        // game output state
+        this.recalculateGrid();
         // game input state
         this.leftDownPressed = false;
         this.leftUpPressed = false;
         this.rightDownPressed = false;
         this.rightUpPressed = false;
+        this.mouseDown = false;
         // empty state
         this.state = qstate();
         // determine structure of the state
@@ -1103,16 +1106,55 @@ ENGINE.Game = {
         }
     },
     
-    // pointers (mouse and touches)
-    pointerdown: function(event) {
-        this.app.setState(ENGINE.Pause);
+    pointerCheck: function() {
+        let hspace = this.gstep * (gridWidth / 4);
+        let vmid   = this.gridTop + this.gstep * (gridHeight / 2);
+        
+        this.leftUpPointed = false;
+        this.leftDownPointed = false;
+        this.rightUpPointed = false;
+        this.rightDownPointed = false;
+        
+        for (var id in this.app.pointers) {
+            let event = this.app.pointers[id];
+            
+            if (! event.pressed) continue;
+            
+            if (event.x - this.gridLeft <= hspace) {
+                // left player
+                if (event.y < vmid) {
+                    // up
+                    this.leftUpPointed = true;
+                }
+                else {
+                    // down
+                    this.leftDownPointed = true;
+                }
+            }
+            else if (this.gridRight - event.x <= hspace) {
+                // right player
+                if (event.y < vmid) {
+                    // up
+                    this.rightUpPointed = true;
+                }
+                else {
+                    // down
+                    this.rightDownPointed = true;
+                }
+            }
+        }
     },
-    pointerup: function(event) { },
-    pointermove: function(event) { },
+    
+    // pointers (mouse and touches)
+    //pointerdown: function(event) {
+    //    this.app.setState(ENGINE.Pause);
+    //},
+    //pointerup: function(event) { },
+    //pointermove: function(event) { },
     
     // mouse trap
-    //mousedown: function(event) { },
-    //mouseup: function(event) { },
+    mousedown: function(event) { this.mouseDown = true; },
+    mouseup: function(event) { this.mouseDown = false; },
     //mousemove: function(event) { },
     
     // finger trap - ouch
@@ -1124,7 +1166,40 @@ ENGINE.Game = {
     //gamepaddown: function(event) { },
     //gamepadup: function(event) { },
     //gamepadmove: function(event) { },
-    
+    getButtonBits: function() {
+        // key events are recorded as they happen, but
+        // must read the current state of any pointers
+        this.pointerCheck();
+        
+        // apply inputs (simulating a joystick)
+        let leftDown  =    ! this.leftAI
+                        &&  (this.leftDownPressed  || this.leftDownPointed)
+                        && !(this.leftUpPressed    || this.leftUpPointed);
+        let leftUp    =    ! this.leftAI
+                        &&  (this.leftUpPressed    || this.leftUpPointed)
+                        && !(this.leftDownPressed  || this.leftDownPointed);
+        let rightDown =     (this.rightDownPressed || this.rightDownPointed)
+                        && !(this.rightUpPressed   || this.rightUpPointed);
+        let rightUp   =     (this.rightUpPressed   || this.rightUpPointed)
+                        && !(this.rightDownPressed || this.rightDownPointed);
+        var newButtonBits = [
+            leftDown  ? "1" : "0",
+            leftUp    ? "1" : "0",
+            rightDown ? "1" : "0",
+            rightUp   ? "1" : "0"
+        ];
+        /*
+        let yl = !this.leftAI && !(this.leftDownPressed && this.leftUpPressed);
+        let yr = !(this.rightDownPressed && this.rightUpPressed);
+        var newButtonBits = [
+            (this.leftDownPressed && yl) ? "1" : "0",
+            (this.leftUpPressed && yl) ? "1" : "0",
+            (this.rightDownPressed && yr) ? "1" : "0",
+            (this.rightUpPressed && yr) ? "1" : "0"
+        ];
+        */
+        return newButtonBits;
+    },
     
     step: function(dt) {
         if (this.stop) {
@@ -1141,15 +1216,7 @@ ENGINE.Game = {
         else {
             this.lastStepDT = dt;
         }
-        // apply button inputs (simulating a joystick)
-        let yl = !this.leftAI && !(this.leftDownPressed && this.leftUpPressed);
-        let yr = !(this.rightDownPressed && this.rightUpPressed);
-        var newButtonBits = [
-            (this.leftDownPressed && yl) ? "1" : "0",
-            (this.leftUpPressed && yl) ? "1" : "0",
-            (this.rightDownPressed && yr) ? "1" : "0",
-            (this.rightUpPressed && yr) ? "1" : "0"
-        ];
+        let newButtonBits = this.getButtonBits();
         for (var i = 0; i < newButtonBits.length; i++) {
             this.state.forceSet(this.ranges.buttonBits.start + i, newButtonBits[i]);
         }
@@ -1195,6 +1262,35 @@ ENGINE.Game = {
         }
     },
     
+    recalculateGrid: function() {
+        this.textHeight = 16 * 5;
+        var appBottom = this.app.height - this.textHeight;
+        var appRight  = this.app.width;
+        let siNaive = Math.floor(appRight / gridWidth);
+        let sjNaive = Math.floor(appBottom / gridHeight);
+        this.gstep = Math.min(siNaive, sjNaive);
+        if (false) {
+            // align to top-left of screen
+            this.gridLeft = 0;
+            this.gridTop = 0;
+            this.gridRight  = this.gstep * gridWidth;
+            this.gridBottom = this.gstep * gridHeight;
+        }
+        else {
+            // align to center
+            let gridSizeX = this.gstep * gridWidth;
+            let gridSizeY = this.gstep * gridHeight;
+            
+            let gridPadX = (appRight - gridSizeX) / 2;
+            let gridPadY = (appBottom - gridSizeY) / 2;
+            
+            this.gridLeft = gridPadX;
+            this.gridTop = gridPadY;
+            this.gridRight  = gridPadX + gridSizeX;
+            this.gridBottom = gridPadY + gridSizeY;
+        }
+    },
+    
     render: function(dt) {
         let layer = this.app.layer;
         let _this = this;
@@ -1203,28 +1299,22 @@ ENGINE.Game = {
         layer.clear("#ffffff");
         
         // determine grid location
-        let gridTop = 0;
-        let gridLeft = 0;
-        let textHeight = 16 * 5;
-        var appBottom = this.app.height - textHeight;
-        var appRight  = this.app.width;
-        
-        let siNaive = Math.floor(appRight / gridWidth);
-        let sjNaive = Math.floor(appBottom / gridHeight);
-        
-        let gstep = Math.min(siNaive, sjNaive);
-        
-        let gridRight  = gstep * gridWidth;
-        let gridBottom = gstep * gridHeight;
+        this.recalculateGrid();
+        let gridTop = this.gridTop;
+        let gridLeft = this.gridLeft;
+        let gridRight = this.gridRight;
+        let gridBottom = this.gridBottom;
+        let gstep = this.gstep;
+        let textHeight = this.textHeight;
         
         // render a grid
         if (true) {
             layer.lineWidth(1).strokeStyle("#ff0000");
             for (var i = 0; i <= gridWidth; i++) {
-                layer.strokeLine(i * gstep, gridTop, i * gstep, gridBottom);
+                layer.strokeLine(gridLeft + i * gstep, gridTop, gridLeft + i * gstep, gridBottom);
             }
             for (var j = 0; j <= gridHeight; j++) {
-                layer.strokeLine(gridLeft, j * gstep, gridRight, j * gstep);
+                layer.strokeLine(gridLeft, gridTop + j * gstep, gridRight, gridTop + j * gstep);
             }
         }
         
@@ -1256,7 +1346,7 @@ ENGINE.Game = {
                 let r = tensor.charAt(rBit);
                 
                 layer.save()
-                     .translate(gstep * (x + 0.5), gstep * (y + 0.5));
+                     .translate(gridLeft + gstep * (x + 0.5), gridTop + gstep * (y + 0.5));
                 
                 if (d == "1" && r == "0") {
                     // up-left => rotate 270
@@ -1311,12 +1401,12 @@ ENGINE.Game = {
             for (var j = 0; j < gridHeight; j++) {
                 if (leftProbs[j] > 0) {
                     layer.a(Math.min(1.0, leftProbs[j]))
-                     .fillRect(gstep * (_this.paddleGap + 0.5), gstep * j,
+                     .fillRect(gridLeft + gstep * (_this.paddleGap + 0.5), gridTop + gstep * j,
                                gstep/2, gstep);
                 }
                 if (rightProbs[j] > 0) {
                     layer.a(Math.min(1.0, rightProbs[j]))
-                     .fillRect(gstep * (gridWidth - _this.paddleGap - 1), gstep * j,
+                     .fillRect(gridLeft + gstep * (gridWidth - _this.paddleGap - 1), gridTop + gstep * j,
                                gstep/2, gstep);
                 }
             }
@@ -1356,13 +1446,13 @@ ENGINE.Game = {
                 */
                 
                 layer.strokeStyle("#000")
-                     .strokeRect(gstep * desc.x, gstep * desc.y,
+                     .strokeRect(gridLeft + gstep * desc.x, gridTop + gstep * desc.y,
                                  gstep, gstep);
                 
                 layer.strokeStyle(color);
                 
                 layer.save()
-                     .translate(gstep * (desc.x + 0.5), gstep * (desc.y + 0.5));
+                     .translate(gridLeft + gstep * (desc.x + 0.5), gridTop + gstep * (desc.y + 0.5));
                 
                 if (desc.dir == "h") {
                     layer.rotate(Math.PI/2);
